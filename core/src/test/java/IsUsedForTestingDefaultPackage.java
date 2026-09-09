@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2017 Chris Newland.
- * Licensed under https://github.com/AdoptOpenJDK/jitwatch/blob/master/LICENSE-BSD
- * Instructions: https://github.com/AdoptOpenJDK/jitwatch/wiki
+ * Licensed under https://github.com/chriswhocodes/jitwatch/blob/master/LICENSE-BSD
+ * Instructions: https://github.com/chriswhocodes/jitwatch/wiki
  */
 public class IsUsedForTestingDefaultPackage
 {

@@ -2,7 +2,7 @@
 
 # This script makes an example HotSpot log for trying out JITWatch.
 
-# It executes the Java class org.adoptopenjdk.jitwatch.demo.MakeHotSpotLog
+# It executes the Java class com.chrisnewland.jitwatch.demo.MakeHotSpotLog
 # which contains methods that exercise various parts of the HotSpot JIT compilers
 # such as inlining, intrinsics, and branch analysis.
 
@@ -72,5 +72,5 @@ echo "Building example HotSpot log"
 
 export CLASSPATH=../ui/target/jitwatch-ui-shaded.jar
 
-"$JAVA_HOME/bin/java" $REQUIRED_SWITCHES $OPTIONAL_SWITCHES -cp "$CLASSPATH" org.adoptopenjdk.jitwatch.demo.MakeHotSpotLog 2>&1 >/dev/null
+"$JAVA_HOME/bin/java" $REQUIRED_SWITCHES $OPTIONAL_SWITCHES -cp "$CLASSPATH" com.chrisnewland.jitwatch.demo.MakeHotSpotLog 2>&1 >/dev/null
 echo "Done"

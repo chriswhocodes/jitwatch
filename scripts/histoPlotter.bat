@@ -11,6 +11,6 @@ set CLASSPATH=..\ui\target\jitwatch-ui-shaded.jar
 
 echo %CLASSPATH%
 
-"%JAVA_HOME%\bin\java" -classpath "%CLASSPATH%" org.adoptopenjdk.jitwatch.jarscan.visualiser.HistoPlotter %1
+"%JAVA_HOME%\bin\java" -classpath "%CLASSPATH%" com.chrisnewland.jitwatch.jarscan.visualiser.HistoPlotter %1
 @REM ---------------------------------------------------------------
 

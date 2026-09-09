@@ -1,0 +1,88 @@
+/*
+ * Copyright (c) 2013-2017 Chris Newland.
+ * Licensed under https://github.com/chriswhocodes/jitwatch/blob/master/LICENSE-BSD
+ * Instructions: https://github.com/chriswhocodes/jitwatch/wiki
+ */
+package com.chrisnewland.jitwatch.ui.sandbox;
+
+import java.util.Collections;
+import java.util.List;
+
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
+import javafx.geometry.Insets;
+import javafx.scene.control.Button;
+import javafx.scene.layout.FlowPane;
+import javafx.stage.Stage;
+
+import com.chrisnewland.jitwatch.core.JITWatchConfig;
+import com.chrisnewland.jitwatch.jvmlang.LanguageManager;
+import com.chrisnewland.jitwatch.ui.stage.IStageClosedListener;
+import com.chrisnewland.jitwatch.ui.stage.StageManager;
+
+public class VMLanguageList extends FlowPane implements IStageClosedListener
+{
+	private JITWatchConfig config;
+
+	private VMLanguageConfigStage openVMLCStage = null;
+	
+	private Stage parent;
+
+	public VMLanguageList(Stage parent, final JITWatchConfig config)
+	{
+		this.config = config;
+		this.parent = parent;
+
+		setVgap(10);
+		setHgap(20);
+
+		setMaxWidth(600);
+
+		setPadding(new Insets(0,0,5,0));
+
+		updateList();
+	}
+
+	@Override
+	public void handleStageClosed(Stage stage)
+	{
+		openVMLCStage = null;
+		updateList();
+	}
+
+	private void updateList()
+	{
+		List<String> vmLanguageList = config.getVMLanguageList();
+
+		Collections.sort(vmLanguageList);
+
+		getChildren().clear();
+
+		for (final String lang : vmLanguageList)
+		{
+			Button button = new Button(lang);
+			button.setPrefWidth(120);
+
+			if (!LanguageManager.isLanguageEnabled(lang))
+			{
+				button.setDisable(true);
+			}
+
+			button.setOnAction(new EventHandler<ActionEvent>()
+			{
+				@Override
+				public void handle(ActionEvent e)
+				{
+					if (openVMLCStage == null)
+					{
+						openVMLCStage = new VMLanguageConfigStage(VMLanguageList.this, config, lang);
+
+						StageManager.addAndShow(parent, openVMLCStage, VMLanguageList.this);
+					}
+				}
+			});
+
+			getChildren().add(button);
+		}
+	}
+}

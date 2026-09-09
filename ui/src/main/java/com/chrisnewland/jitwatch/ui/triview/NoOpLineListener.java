@@ -1,0 +1,34 @@
+/*
+ * Copyright (c) 2013-2017 Chris Newland.
+ * Licensed under https://github.com/chriswhocodes/jitwatch/blob/master/LICENSE-BSD
+ * Instructions: https://github.com/chriswhocodes/jitwatch/wiki
+ */
+package com.chrisnewland.jitwatch.ui.triview;
+
+public class NoOpLineListener implements ILineListener
+{
+	@Override
+	public void lineHighlighted(int index, LineType lineType)
+	{
+	}
+
+	@Override
+	public void handleFocusSelf(LineType lineType)
+	{
+	}
+
+	@Override
+	public void handleFocusNext()
+	{
+	}
+
+	@Override
+	public void handleFocusPrev()
+	{
+	}
+
+	@Override
+	public void setRange(LineType lineType, int startRange, int endRange)
+	{		
+	}
+}

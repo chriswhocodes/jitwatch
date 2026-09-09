@@ -1,0 +1,12 @@
+/*
+ * Copyright (c) 2013-2016 Chris Newland.
+ * Licensed under https://github.com/chriswhocodes/jitwatch/blob/master/LICENSE-BSD
+ * Instructions: https://github.com/chriswhocodes/jitwatch/wiki
+ */
+package com.chrisnewland.jitwatch.process;
+
+public interface IExternalProcess
+{
+	String getOutputStream();
+	String getErrorStream();
+}

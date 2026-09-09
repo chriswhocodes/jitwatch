@@ -5,7 +5,7 @@
 
     <groupId>com.chrisnewland</groupId>
     <artifactId>jitwatch-parent</artifactId>
-    <version>1.5</version>
+    <version>1.6</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -14,7 +14,7 @@
         <javac.source>1.8</javac.source>
         <javac.target>1.8</javac.target>
 
-        <main.class>org.adoptopenjdk.jitwatch.launch.LaunchUI</main.class>
+        <main.class>com.chrisnewland.jitwatch.launch.LaunchUI</main.class>
     </properties>
 
     <packaging>pom</packaging>
@@ -26,7 +26,7 @@
 
     <name>JITWatch Parent</name>
     <description>Visualisation of JIT behaviour</description>
-    <url>https://github.com/AdoptOpenJDK/jitwatch</url>
+    <url>https://github.com/chriswhocodes/jitwatch</url>
     <inceptionYear>2013</inceptionYear>
 
     <licenses>
@@ -50,11 +50,9 @@
     <contributors>
         <contributor>
             <name>Martijn Verburg</name>
-            <timezone>GMT</timezone>
         </contributor>
         <contributor>
             <name>Mani Sarkar</name>
-            <timezone>GMT</timezone>
         </contributor>
         <contributor>
             <name>Stefan Ferstl</name>
@@ -148,12 +146,12 @@
 
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/AdoptOpenJDK/jitwatch/issues</url>
+        <url>https://github.com/chriswhocodes/jitwatch/issues</url>
     </issueManagement>
 
     <scm>
-        <connection>scm:git:https://github.com/AdoptOpenJDK/jitwatch.git</connection>
-        <developerConnection>scm:git:git@github.com:AdoptOpenJDK/jitwatch.git</developerConnection>
+        <connection>scm:git:https://github.com/chriswhocodes/jitwatch.git</connection>
+        <developerConnection>scm:git:git@github.com:chriswhocodes/jitwatch.git</developerConnection>
         <url>${project.url}</url>
     </scm>
 

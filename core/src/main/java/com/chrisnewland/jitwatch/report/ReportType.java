@@ -1,0 +1,11 @@
+/*
+ * Copyright (c) 2016 Chris Newland.
+ * Licensed under https://github.com/chriswhocodes/jitwatch/blob/master/LICENSE-BSD
+ * Instructions: https://github.com/chriswhocodes/jitwatch/wiki
+ */
+package com.chrisnewland.jitwatch.report;
+
+public enum ReportType
+{
+	BRANCH, INLINE_SUCCESS, INLINE_FAILURE, CODE_CACHE, HOT_THROW, ELIMINATED_ALLOCATION_DIRECT, ELIMINATED_ALLOCATION_INLINE
+}

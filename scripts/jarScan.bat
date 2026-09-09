@@ -9,6 +9,6 @@
 
 set CLASSPATH=..\ui\target\jitwatch-ui-shaded.jar
 
-"%JAVA_HOME%\bin\java" -classpath "%CLASSPATH%" org.adoptopenjdk.jitwatch.jarscan.JarScan %*
+"%JAVA_HOME%\bin\java" -classpath "%CLASSPATH%" com.chrisnewland.jitwatch.jarscan.JarScan %*
 @REM ---------------------------------------------------------------
 

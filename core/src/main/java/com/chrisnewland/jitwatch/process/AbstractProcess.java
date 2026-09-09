@@ -1,0 +1,178 @@
+/*
+ * Copyright (c) 2013-2022 Chris Newland.
+ * Licensed under https://github.com/chriswhocodes/jitwatch/blob/master/LICENSE-BSD
+ * Instructions: https://github.com/chriswhocodes/jitwatch/wiki
+ */
+package com.chrisnewland.jitwatch.process;
+
+import static com.chrisnewland.jitwatch.core.JITWatchConstants.C_SPACE;
+import static com.chrisnewland.jitwatch.core.JITWatchConstants.S_EMPTY;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import com.chrisnewland.jitwatch.logger.ILogListener;
+import com.chrisnewland.jitwatch.process.runtime.RuntimeJava;
+import com.chrisnewland.freelogj.Logger;
+import com.chrisnewland.freelogj.LoggerFactory;
+
+public abstract class AbstractProcess implements IExternalProcess
+{
+	protected static final Logger logger = LoggerFactory.getLogger(RuntimeJava.class);
+
+	private Path stdErr;
+	private Path stdOut;
+
+	public AbstractProcess()
+	{
+		try
+		{
+			stdErr = Files.createTempFile("stream", ".err");
+			stdOut = Files.createTempFile("stream", ".out");
+		}
+		catch (IOException ioe)
+		{
+			ioe.printStackTrace();
+		}
+	}
+
+	public String getExecutableSuffix()
+	{
+		return isWindows() ? ".exe" : "";
+	}
+
+	public String getLaunchScriptSuffix()
+	{
+		return isWindows() ? ".bat" : ".sh";
+	}
+
+	public boolean isWindows()
+	{
+		return System.getProperty("os.name", S_EMPTY).contains("Windows");
+	}
+
+	@Override public String getOutputStream()
+	{
+		String result = null;
+
+		if (stdOut.toFile().exists())
+		{
+			try
+			{
+				result = new String(Files.readAllBytes(stdOut), StandardCharsets.UTF_8);
+			}
+			catch (IOException ioe)
+			{
+				ioe.printStackTrace();
+			}
+		}
+
+		return result;
+	}
+
+	@Override public String getErrorStream()
+	{
+		String result = null;
+
+		if (stdErr.toFile().exists())
+		{
+			try
+			{
+				result = new String(Files.readAllBytes(stdErr), StandardCharsets.UTF_8);
+			}
+			catch (IOException ioe)
+			{
+				ioe.printStackTrace();
+			}
+		}
+
+		return result;
+	}
+
+	protected String makeClassPath(List<String> classpathEntries)
+	{
+		StringBuilder cpBuilder = new StringBuilder();
+
+		for (String cp : classpathEntries)
+		{
+			cpBuilder.append(cp).append(File.pathSeparatorChar);
+		}
+
+		if (cpBuilder.length() > 0)
+		{
+			cpBuilder.deleteCharAt(cpBuilder.length() - 1);
+		}
+
+		return cpBuilder.toString();
+	}
+
+	protected boolean runCommands(List<String> commands, Map<String, String> environment, ILogListener logListener)
+	{
+		return runCommands(commands, null, environment, logListener);
+	}
+
+	protected boolean runCommands(List<String> commands, Path workingDirectory, Map<String, String> environment,
+			ILogListener logListener)
+	{
+		StringBuilder cmdBuilder = new StringBuilder();
+
+		for (String part : commands)
+		{
+			cmdBuilder.append(part).append(C_SPACE);
+		}
+
+		logger.info("Process: {}", cmdBuilder.toString());
+
+		if (logListener != null)
+		{
+			logListener.handleLogEntry("Running: " + cmdBuilder.toString());
+		}
+
+		int result = -1;
+
+		try
+		{
+			ProcessBuilder pb = new ProcessBuilder(commands);
+
+			if (environment != null)
+			{
+				Map<String, String> processEnvironment = pb.environment();
+
+				for (Map.Entry<String, String> entry : environment.entrySet())
+				{
+					processEnvironment.put(entry.getKey(), entry.getValue());
+
+					logListener.handleLogEntry("Environment: " + entry.getKey() + "=" + entry.getValue());
+				}
+			}
+
+			if (workingDirectory != null)
+			{
+				pb.directory(workingDirectory.toFile());
+			}
+
+			pb.redirectError(stdErr.toFile());
+			pb.redirectOutput(stdOut.toFile());
+
+			Process proc = pb.start();
+
+			result = proc.waitFor();
+		}
+		catch (Exception e)
+		{
+			if (logListener != null)
+			{
+				logListener.handleErrorEntry("Could not run external process:" + e);
+			}
+
+			logger.error("Could not run external process:", e);
+		}
+
+		return result == 0; // normal completion
+	}
+}

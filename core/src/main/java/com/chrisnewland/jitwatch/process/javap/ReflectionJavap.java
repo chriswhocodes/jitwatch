@@ -1,0 +1,175 @@
+/*
+ * Copyright (c) 2017-2021 Chris Newland.
+ * Licensed under https://github.com/chriswhocodes/jitwatch/blob/master/LICENSE-BSD
+ * Instructions: https://github.com/chriswhocodes/jitwatch/wiki
+ */
+package com.chrisnewland.jitwatch.process.javap;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.OutputStream;
+import java.lang.reflect.Method;
+import java.lang.reflect.Constructor;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+
+import com.chrisnewland.jitwatch.loader.DisposableURLClassLoader;
+import com.chrisnewland.freelogj.Logger;
+import com.chrisnewland.freelogj.LoggerFactory;
+
+public class ReflectionJavap
+{
+	private static final Logger logger = LoggerFactory.getLogger(ReflectionJavap.class);
+
+	private static final String JAVAPTASK_CLASS = "com.sun.tools.javap.JavapTask";
+
+	private static final int BUFFER_SIZE = 64 * 1024;
+
+	private static boolean hasCheckedForToolsJar = false;
+
+	private static boolean canUseReflectionJavap = false;
+
+	private static Class<?> classJavapTask;
+
+	private static URL locateToolsJar()
+	{
+		Path javaHome = Paths.get(System.getProperty("java.home"));
+
+		Path toolsJarPath = Paths.get(javaHome.toString(), "..", "lib", "tools.jar").normalize();
+
+		URL result = null;
+
+		if (toolsJarPath.toFile().exists())
+		{
+			try
+			{
+				result = toolsJarPath.toFile().toURI().toURL();
+			}
+			catch (MalformedURLException e)
+			{
+				e.printStackTrace();
+			}
+		}
+
+		return result;
+	}
+
+	public static boolean canUseReflectionJavap()
+	{
+		if (!canUseReflectionJavap)
+		{
+			boolean available = false;
+
+			try
+			{
+				classJavapTask = Class.forName(JAVAPTASK_CLASS);
+			}
+			catch (ClassNotFoundException cnfe)
+			{
+				URL toolsJarURL = locateToolsJar();
+
+				if (toolsJarURL != null)
+				{
+					List<URL> urls = new ArrayList<>();
+
+					urls.add(toolsJarURL);
+
+					DisposableURLClassLoader disposableClassLoader = new DisposableURLClassLoader(urls);
+
+					try
+					{
+						classJavapTask = Class.forName(JAVAPTASK_CLASS, false, disposableClassLoader);
+					}
+					catch (ClassNotFoundException cnfe2)
+					{
+						cnfe2.printStackTrace();
+					}
+				}
+			}
+
+			if (classJavapTask != null)
+			{
+				try
+				{
+					classJavapTask.getMethod("setLog", OutputStream.class);
+					classJavapTask.getMethod("handleOptions", String[].class);
+					classJavapTask.getMethod("call");
+
+					available = true;
+				}
+				catch (NoSuchMethodException | SecurityException e)
+				{
+					e.printStackTrace();
+				}
+			}
+
+			canUseReflectionJavap = available;
+		}
+
+		return canUseReflectionJavap;
+	}
+
+	public static String getBytecode(List<String> classLocations, String fqClassName) throws Exception
+	{
+		String[] args = buildClassPathFromClassLocations(classLocations, fqClassName);
+
+		String byteCodeString = createJavapTaskFromArguments(fqClassName, args);
+
+		return byteCodeString;
+	}
+
+	private static String createJavapTaskFromArguments(String fqClassName, String[] args) throws Exception
+	{
+		String byteCodeString = null;
+
+		if (classJavapTask != null)
+		{
+
+			Constructor<?> constructor = classJavapTask.getDeclaredConstructor();
+			Object javapObject = constructor.newInstance();
+
+			Method methodSetLog = classJavapTask.getMethod("setLog", OutputStream.class);
+			Method methodHandleOptions = classJavapTask.getMethod("handleOptions", String[].class);
+			Method methodCall = classJavapTask.getMethod("call");
+
+			try (ByteArrayOutputStream baos = new ByteArrayOutputStream(BUFFER_SIZE))
+			{
+				methodSetLog.invoke(javapObject, baos);
+				methodHandleOptions.invoke(javapObject, new Object[] { args });
+				methodCall.invoke(javapObject);
+
+				byteCodeString = baos.toString();
+			}
+		}
+		return byteCodeString;
+	}
+
+	private static String[] buildClassPathFromClassLocations(List<String> classLocations, String fqClassName)
+	{
+		String[] args;
+
+		if (classLocations == null || classLocations.isEmpty())
+		{
+			args = new String[] { "-c", "-p", "-v", fqClassName };
+		}
+		else
+		{
+			StringBuilder classPathBuilder = new StringBuilder();
+
+			for (String cp : classLocations)
+			{
+				classPathBuilder.append(cp).append(File.pathSeparatorChar);
+			}
+
+			classPathBuilder.deleteCharAt(classPathBuilder.length() - 1);
+
+			args = new String[] { "-c", "-p", "-v", "-classpath", classPathBuilder.toString(), fqClassName };
+		}
+
+		return args;
+	}
+}

@@ -2,7 +2,7 @@
 
 rem This script makes an example HotSpot log for trying out JITWatch.
 
-rem It executes the Java class org.adoptopenjdk.jitwatch.demo.MakeHotSpotLog
+rem It executes the Java class demo.com.chrisnewland.jitwatch.MakeHotSpotLog
 rem which contains methods that exercise various parts of the HotSpot JIT compilers
 rem such as inlining, intrinsics, and branch analysis.
 
@@ -62,5 +62,5 @@ echo "Building example HotSpot log"
 
 set CLASSPATH=..\ui\target\jitwatch-ui-shaded.jar
 
-"%JAVA_HOME%\bin\java" %REQUIRED_SWITCHES% %OPTIONAL_SWITCHES% -cp %CLASSPATH% org.adoptopenjdk.jitwatch.demo.MakeHotSpotLog
+"%JAVA_HOME%\bin\java" %REQUIRED_SWITCHES% %OPTIONAL_SWITCHES% -cp %CLASSPATH% com.chrisnewland.jitwatch.demo.MakeHotSpotLog
 echo "Done"

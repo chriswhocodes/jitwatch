@@ -50,4 +50,4 @@ fi
 
 export CLASSPATH=../ui/target/jitwatch-ui-shaded.jar
 
-"$JAVA_HOME/bin/java" -cp "$CLASSPATH" org.adoptopenjdk.jitwatch.jarscan.JarScan "$@"
+"$JAVA_HOME/bin/java" -cp "$CLASSPATH" com.chrisnewland.jitwatch.jarscan.JarScan "$@"
