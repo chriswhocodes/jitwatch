@@ -152,7 +152,15 @@ public class MemberSignatureParts
 
 		String[] parts = ParseUtil.splitLogSignatureWithRegex(toParse);
 
-		msp.fullyQualifiedClassName = parts[0].replaceAll(S_SLASH, S_DOT);
+		// Preserve the /0xADDR suffix used by hidden/anonymous classes; only
+		// replace package-separator slashes with dots.
+		msp.fullyQualifiedClassName = parts[0].replaceAll("/(?!0x[0-9a-fA-F])", S_DOT);
+
+		if (ParseUtil.isLegacyLambdaFQN(msp.fullyQualifiedClassName))
+		{
+			msp.fullyQualifiedClassName = ParseUtil.stripLegacyLambdaHash(msp.fullyQualifiedClassName);
+		}
+				
 		msp.memberName = parts[1];
 
 		String paramTypes = parts[2];
@@ -369,7 +377,9 @@ public class MemberSignatureParts
 			String memberName = matcher.group(2);
 			String paramTypes = matcher.group(3).replace(S_OPEN_PARENTHESES, S_EMPTY).replace(S_CLOSE_PARENTHESES, S_EMPTY);
 			String returnType = matcher.group(4);
-			String className = matcher.group(5).replace(S_SLASH, S_DOT);
+			// Assembly comments use '+0x' as the hidden-class address separator;
+			// the model keys hidden classes with '/0x'. Normalise before lookup.
+			String className = matcher.group(5).replace(S_SLASH, S_DOT).replace("+0x", "/0x");
 
 			msp.memberName = memberName;
 			msp.fullyQualifiedClassName = className;

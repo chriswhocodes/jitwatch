@@ -24,7 +24,6 @@ import static com.chrisnewland.jitwatch.core.JITWatchConstants.ZING;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.FALCON;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.JVMCI;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.S_DOT;
-import static com.chrisnewland.jitwatch.core.JITWatchConstants.S_SLASH;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_CODE_CACHE;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_TASK;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_TASK_DONE;
@@ -251,13 +250,27 @@ public abstract class AbstractLogParser implements ILogParser
 		}
 		catch (LogParseException ex)
 		{
-			if (DEBUG_LOGGING)
+			if (tryRecoverMember(logSignature))
 			{
-				logger.debug("Could not parse signature: {}", logSignature);
-				logger.debug("Exception was {}", ex.getMessage());
-			}
+				try
+				{
+					result = ParseUtil.findMemberWithSignature(model, logSignature);
+				}
+				catch (LogParseException retryEx)
+				{
+					if (DEBUG_LOGGING)
+					{
+						logger.debug("Could not parse signature: {}", logSignature);
+						logger.debug("Exception was {}", ex.getMessage());
+					}
 
-			logError("Could not parse line " + processLineNumber + " : " + logSignature + " : " + ex.getMessage());
+					logError("Could not parse line " + processLineNumber + " : " + logSignature + " : " + ex.getMessage());
+				}
+			}
+			else
+			{
+				onMemberUnresolvable(logSignature, ex);
+			}
 		}
 
 		return result;
@@ -281,7 +294,32 @@ public abstract class AbstractLogParser implements ILogParser
 		splitLog.clear();
 		splitLog = new SplitLog();
 	}
+	
+	protected boolean tryHandleHiddenClass(String fqClassName)
+	{
+		return false;
+	}
+	
+	protected void afterParseLogFile()
+	{
+	}
 
+	protected boolean tryRecoverMember(String logSignature)
+	{
+		return false;
+	}
+	
+	protected void onMemberUnresolvable(String logSignature, LogParseException ex)
+	{
+		if (DEBUG_LOGGING)
+		{
+			logger.debug("Could not parse signature: {}", logSignature);
+			logger.debug("Exception was {}", ex.getMessage());
+		}
+
+		logError("Could not parse line " + processLineNumber + " : " + logSignature + " : " + ex.getMessage());
+	}
+	
 	protected void addToClassModel(String fqClassName)
 	{
 		if (DEBUG_LOGGING)
@@ -294,6 +332,11 @@ public abstract class AbstractLogParser implements ILogParser
 		MetaClass metaClass = model.getPackageManager().getMetaClass(fqClassName);
 
 		if (metaClass != null)
+		{
+			return;
+		}
+		
+		if (tryHandleHiddenClass(fqClassName))
 		{
 			return;
 		}
@@ -364,6 +407,8 @@ public abstract class AbstractLogParser implements ILogParser
 		}
 
 		parseLogFile();
+		
+		afterParseLogFile();
 
 		jitListener.handleReadComplete();
 	}
@@ -474,7 +519,9 @@ public abstract class AbstractLogParser implements ILogParser
 
 		if (attrMethod != null)
 		{
-			attrMethod = attrMethod.replace(S_SLASH, S_DOT);
+			// Replace package-separator slashes with dots but preserve the
+			// /0xADDR suffix used by hidden and anonymous VM classes in logs.
+			attrMethod = attrMethod.replaceAll("/(?!0x[0-9a-fA-F])", S_DOT);
 
 			handleMember(attrMethod, attrs, eventType, tag);
 		}

@@ -329,6 +329,8 @@ public class JITWatchUI extends Application
 	public void handleReadComplete()
 	{
 		log("Finished reading log file.");
+		
+		maybeLogHiddenClassWarning();
 
 		isReadingLogFile = false;
 
@@ -377,6 +379,14 @@ public class JITWatchUI extends Application
 				log("Could not parse member signature from property " + PROPERTY_FOCUS_MEMBER + ": " + focusMemberFromProperty);
 				log("Property must be in LogCompilation signature format: java/lang/String indexOf (II)I");
 			}
+		}
+	}
+	
+	private void maybeLogHiddenClassWarning() 
+	{
+		if (logParser.isHiddenClassWarningNeeded())
+		{
+			log(logParser.getHiddenClassWarningMessage());
 		}
 	}
 

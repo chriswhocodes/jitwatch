@@ -31,5 +31,7 @@ public interface IReadOnlyJITDataModel
     
 	MetaClass buildAndGetMetaClass(Class<?> clazz);
 	
+	MetaClass buildAndGetMetaClass(Class<?> clazz, String overrideFQN);
+	
 	long getBaseTimestamp();
 }

@@ -38,6 +38,15 @@ public interface ILogParser
 	void reset();
 
 	boolean hasParseError();
+	
+	default boolean isHiddenClassWarningNeeded()
+	{
+		return false;
+	}
+
+	default String getHiddenClassWarningMessage() {
+		return "";
+	}
 
 	String getVMCommand();
 

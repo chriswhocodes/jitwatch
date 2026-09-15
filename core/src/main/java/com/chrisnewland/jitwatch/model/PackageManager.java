@@ -54,6 +54,14 @@ public class PackageManager
 		if (className != null)
 		{
 			result = metaClasses.get(className);
+			
+			if (result == null && !className.contains("/0x") && !className.contains("+0x"))
+			{
+				// JDK 11-14: assembly # {method} lines omit the /0x<addr> suffix from
+				// hidden/anonymous class names while the MetaClass key retains it.
+				// Fall back to a prefix scan so TriView can attach the assembly.
+				result = findHiddenMetaClassByBaseName(className);
+			}
 		}
 		
 		return result;
@@ -129,6 +137,30 @@ public class PackageManager
 		}
 		
 		return mp;
+	}
+	
+	private MetaClass findHiddenMetaClassByBaseName(String baseName)
+	{
+		String slashPrefix = baseName + "/0x";
+		String plusPrefix  = baseName + "+0x";
+		MetaClass found = null;
+
+		for (Map.Entry<String, MetaClass> entry : metaClasses.entrySet())
+		{
+			String key = entry.getKey();
+
+			if (key.startsWith(slashPrefix) || key.startsWith(plusPrefix))
+			{
+				if (found != null)
+				{
+					return null;
+				}
+
+				found = entry.getValue();
+			}
+		}
+
+		return found;
 	}
 	
 	private void storePackage(String name, MetaPackage metaPackage)

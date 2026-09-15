@@ -36,6 +36,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
+import javafx.util.Duration;
 
 public class SandboxConfigStage extends Stage
 {
@@ -51,6 +52,7 @@ public class SandboxConfigStage extends Stage
 
 	private CheckBox checkBoxPrintAssembly;
 	private CheckBox checkBoxDisableInlining;
+	private CheckBox checkBoxCaptureDynamicClasses;
 
 	private IStageClosedListener closedListener;
 	private JITWatchConfig config;
@@ -72,7 +74,7 @@ public class SandboxConfigStage extends Stage
 
 		VBox vbox = new VBox();
 
-		scene = UserInterfaceUtil.getScene(vbox, 620, 580);
+		scene = UserInterfaceUtil.getScene(vbox, 620, 700);
 
 		setScene(scene);
 
@@ -93,6 +95,8 @@ public class SandboxConfigStage extends Stage
 
 		vbox.getChildren().add(buildHBoxAssemblySyntax());
 
+		vbox.getChildren().add(buildHBoxCaptureDynamicClasses());
+		
 		vbox.getChildren().add(buildHBoxTieredCompilation());
 
 		vbox.getChildren().add(buildHBoxCompressedOops());
@@ -139,6 +143,7 @@ public class SandboxConfigStage extends Stage
 
 				config.setPrintAssembly(checkBoxPrintAssembly.isSelected());
 				config.setDisableInlining(checkBoxDisableInlining.isSelected());
+				config.setCaptureDynamicClasses(checkBoxCaptureDynamicClasses.isSelected());
 
 				config.saveConfig();
 
@@ -761,6 +766,43 @@ public class SandboxConfigStage extends Stage
 		return checkBoxDisableInlining;
 	}
 
+	private HBox buildHBoxCaptureDynamicClasses()
+	{
+		HBox hbox = new HBox();
+		hbox.setSpacing(16);
+		hbox.setAlignment(Pos.CENTER_LEFT);
+
+		hbox.getChildren().add(buildCheckBoxCaptureDynamicClasses());
+
+		return hbox;
+	}
+
+	private CheckBox buildCheckBoxCaptureDynamicClasses()
+	{
+		checkBoxCaptureDynamicClasses = new CheckBox("Capture dynamic/hidden classes");
+
+		String tip = "When enabled, JVM dump flags are added automatically for the detected JDK version\n"
+				+ "and the resulting dump directories are registered as class locations.\n\n"
+				+ "JDK 21+:\n"
+				+ "  -Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles\n"
+				+ "  -Djdk.invoke.MethodHandle.dumpClassFiles\n"
+				+ "  Output: DUMP_LAMBDA_PROXY_CLASS_FILES/ and DUMP_CLASS_FILES/\n"
+				+ "          created relative to the sandbox working directory.\n\n"
+				+ "JDK 8-20:\n"
+				+ "  -Djdk.internal.lambda.dumpProxyClasses=<sandbox>/lambda-proxy-dump/\n"
+				+ "  -Djava.lang.invoke.MethodHandle.DUMP_CLASS_FILES=true\n"
+				+ "  Output: lambda-proxy-dump/ for lambda proxies;\n"
+				+ "          MethodHandle adapter classes dumped to DUMP_CLASS_FILES/\n"
+				+ "          created relative to the sandbox working directory.";
+		Tooltip tooltip = new Tooltip(tip);
+		tooltip.setShowDuration(Duration.minutes(1));
+		checkBoxCaptureDynamicClasses.setTooltip(tooltip);
+		checkBoxCaptureDynamicClasses.setMinWidth(labelWidth);
+		checkBoxCaptureDynamicClasses.setSelected(config.isCaptureDynamicClasses());
+
+		return checkBoxCaptureDynamicClasses;
+	}
+	
 	private HBox buildHBoxButtons()
 	{
 		HBox hbox = new HBox();

@@ -89,6 +89,7 @@ public class JITWatchConfig
 
 	private static final String KEY_LAST_PROFILE = "last.profile";
 	private static final String KEY_NO_PROMPT_HSDIS = SANDBOX_PREFIX + ".no.prompt.hsdis";
+	private static final String KEY_SANDBOX_CAPTURE_DYNAMIC_CLASSES = SANDBOX_PREFIX + ".capture.dynamic.classes";
 
 	private List<String> sourceLocations = new ArrayList<>();
 	private List<String> classLocations = new ArrayList<>();
@@ -133,6 +134,7 @@ public class JITWatchConfig
 	private String preSandboxProfile = S_PROFILE_DEFAULT;
 
 	private boolean noPromptHsdis = false;
+	private boolean captureDynamicClasses = false;
 
 	private ParsedClasspath parsedClasspath = new ParsedClasspath();
 
@@ -364,6 +366,7 @@ public class JITWatchConfig
 		extraVMRuntimeSwitches = getProperty(loadedProps, KEY_SANDBOX_EXTRA_VM_RUNTIME_SWITCHES, JITWatchConstants.S_EMPTY);
 
 		noPromptHsdis = loadBooleanFromProperty(loadedProps, KEY_NO_PROMPT_HSDIS, false);
+		captureDynamicClasses = loadBooleanFromProperty(loadedProps, KEY_SANDBOX_CAPTURE_DYNAMIC_CLASSES, false);
 
 		sandboxWorkingDir = getProperty(loadedProps, KEY_SANDBOX_WORKING_DIR, JITWatchConstants.S_EMPTY);
 	}
@@ -631,6 +634,7 @@ public class JITWatchConfig
 		putProperty(loadedProps, KEY_SANDBOX_EXTRA_VM_RUNTIME_SWITCHES, extraVMRuntimeSwitches);
 
 		putProperty(loadedProps, KEY_NO_PROMPT_HSDIS, Boolean.toString(noPromptHsdis));
+		putProperty(loadedProps, KEY_SANDBOX_CAPTURE_DYNAMIC_CLASSES, Boolean.toString(captureDynamicClasses));
 
 		putProperty(loadedProps, KEY_SANDBOX_WORKING_DIR, sandboxWorkingDir);
 	}
@@ -967,5 +971,15 @@ public class JITWatchConfig
 	public void setNoPromptHsdis(boolean noPromptHsdis)
 	{
 		this.noPromptHsdis = noPromptHsdis;
+	}
+	
+	public boolean isCaptureDynamicClasses()
+	{
+		return captureDynamicClasses;
+	}
+
+	public void setCaptureDynamicClasses(boolean captureDynamicClasses)
+	{
+		this.captureDynamicClasses = captureDynamicClasses;
 	}
 }

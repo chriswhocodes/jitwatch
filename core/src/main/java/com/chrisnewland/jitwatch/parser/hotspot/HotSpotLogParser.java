@@ -7,6 +7,7 @@ package com.chrisnewland.jitwatch.parser.hotspot;
 
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.ATTR_NAME;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.ATTR_THREAD;
+import static com.chrisnewland.jitwatch.core.JITWatchConstants.ATTR_TIME_MS;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.C_AT;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.C_OPEN_ANGLE;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.C_OPEN_SQUARE_BRACKET;
@@ -23,6 +24,7 @@ import static com.chrisnewland.jitwatch.core.JITWatchConstants.S_SPACE;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_CLOSE_CDATA;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_CODE_CACHE_FULL;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_COMMAND;
+import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_HOTSPOT_LOG;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_HOTSPOT_LOG_DONE;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_NMETHOD;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_OPEN_CDATA;
@@ -37,26 +39,31 @@ import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_VM_ARGUMENTS;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_VM_VERSION;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_WRITER;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_XML;
-import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_HOTSPOT_LOG;
-import static com.chrisnewland.jitwatch.core.JITWatchConstants.ATTR_TIME_MS;
+import static com.chrisnewland.jitwatch.core.JITWatchConstants.DEBUG_LOGGING;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import com.chrisnewland.jitwatch.core.IJITListener;
+import com.chrisnewland.jitwatch.loader.ByteArrayClassLoader;
 import com.chrisnewland.jitwatch.model.CodeCacheEvent.CodeCacheEventType;
+import com.chrisnewland.jitwatch.model.LogParseException;
 import com.chrisnewland.jitwatch.model.NumberedLine;
 import com.chrisnewland.jitwatch.model.Tag;
 import com.chrisnewland.jitwatch.model.Task;
-import com.chrisnewland.jitwatch.model.assembly.AssemblyProcessor;
 import com.chrisnewland.jitwatch.model.assembly.Architecture;
+import com.chrisnewland.jitwatch.model.assembly.AssemblyProcessor;
 import com.chrisnewland.jitwatch.parser.AbstractLogParser;
+import com.chrisnewland.jitwatch.util.ClassUtil;
 import com.chrisnewland.jitwatch.util.ParseUtil;
 import com.chrisnewland.jitwatch.util.StringUtil;
 import com.chrisnewland.jitwatch.util.VmVersionDetector;
@@ -69,6 +76,15 @@ public class HotSpotLogParser extends AbstractLogParser
     }
 
     private static Architecture architecture;
+    
+    private boolean sawUnresolvableDefineHiddenClass = false;
+    private boolean sawUnresolvableLambdaClass = false;
+    private boolean hiddenClassDumpPresent = false;
+    private boolean lambdaProxyDumpPresent = false;
+    private String hiddenClassWarningMessage = "";
+
+    private static final String WARN_SEP  = "+-----------------------------------------------------------+";
+    private static final String WARN_HEAD = "| WARNING: Hidden/dynamic class files could not be located. |";
 
     private void checkIfErrorDialogNeeded()
     {
@@ -504,6 +520,302 @@ public class HotSpotLogParser extends AbstractLogParser
         if (fqClassName != null)
         {
             addToClassModel(fqClassName);
+        }
+    }
+    
+    @Override
+    public boolean isHiddenClassWarningNeeded()
+    {
+        return !hiddenClassWarningMessage.isEmpty();
+    }
+
+    @Override
+    public String getHiddenClassWarningMessage()
+    {
+        return hiddenClassWarningMessage;
+    }
+    
+    @Override
+    public void reset()
+    {
+        super.reset();
+        sawUnresolvableDefineHiddenClass = false;
+        sawUnresolvableLambdaClass = false;
+        hiddenClassDumpPresent = false;
+        lambdaProxyDumpPresent = false;
+        hiddenClassWarningMessage = "";
+    }
+
+    @Override
+    protected boolean tryHandleHiddenClass(String fqClassName)
+    {
+    	if (ParseUtil.isHiddenClassFQN(fqClassName))
+        {
+            loadHiddenClassToModel(fqClassName);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    protected boolean tryRecoverMember(String logSignature)
+    {
+    	int spaceIdx = logSignature.indexOf(' ');
+        if (spaceIdx < 0)
+        {
+            return false;
+        }
+
+        String fqClassName = logSignature.substring(0, spaceIdx);
+
+        if (!ParseUtil.isHiddenClassFQN(fqClassName))
+        {
+            return false;
+        }
+
+        if (model.getPackageManager().getMetaClass(fqClassName) != null)
+        {
+            return true;
+        }
+
+        addToClassModel(fqClassName);
+
+        return model.getPackageManager().getMetaClass(fqClassName) != null;
+    }
+
+    @Override
+    protected void onMemberUnresolvable(String logSignature, LogParseException ex)
+    {
+        int spaceIdx = logSignature.indexOf(' ');
+        String candidateFQN = spaceIdx >= 0 ? logSignature.substring(0, spaceIdx) : logSignature;
+
+        if (candidateFQN.contains("$$Lambda"))
+        {
+            String lookupFQN = ParseUtil.isLegacyLambdaFQN(candidateFQN)
+                ? ParseUtil.stripLegacyLambdaHash(candidateFQN)
+                : candidateFQN;
+            if (model.getPackageManager().getMetaClass(lookupFQN) == null)
+            {
+                sawUnresolvableLambdaClass = true;
+            }
+        }
+        else
+        {
+            super.onMemberUnresolvable(logSignature, ex);
+        }
+    }
+
+    @Override
+    protected void afterParseLogFile()
+    {
+        // Anonymous/hidden classes that bypass classloader and compilation XML sections
+        // (no [Loaded ...] line, no <task_queued> entry) still appear in assembly as
+        // method-header comments of the form:  # {method} ... in 'FQN/0xADDR'
+        // Scan those lines as a fallback so the warning fires even in this case.
+        if (!sawUnresolvableDefineHiddenClass || !sawUnresolvableLambdaClass)
+        {
+            for (NumberedLine nl : splitLog.getAssemblyLines())
+            {
+                String line = nl.getLine();
+                int inIdx = line.indexOf("in '");
+                if (inIdx < 0)
+                {
+                    continue;
+                }
+                int start = inIdx + 4;
+                int end   = line.indexOf('\'', start);
+                if (end <= start)
+                {
+                    continue;
+                }
+                String fqn = line.substring(start, end);
+                if (!ParseUtil.isHiddenClassFQN(fqn))
+                {
+                    continue;
+                }
+                if (fqn.contains("$$Lambda"))
+                {
+                    if (!lambdaProxyDumpPresent)
+                    {
+                        sawUnresolvableLambdaClass = true;
+                    }
+                }
+                else
+                {
+                    if (!hiddenClassDumpPresent)
+                    {
+                        sawUnresolvableDefineHiddenClass = true;
+                    }
+                }
+            }
+        }
+
+        boolean warnLambda = sawUnresolvableLambdaClass && !lambdaProxyDumpPresent;
+        boolean warnHidden = sawUnresolvableDefineHiddenClass && !hiddenClassDumpPresent;
+
+        if (warnLambda || warnHidden)
+        {
+            int jdkMajor = model.getJDKMajorVersion();
+
+            StringBuilder msg = new StringBuilder();
+            msg.append(WARN_SEP).append('\n');
+            msg.append(WARN_HEAD).append('\n');
+            msg.append(WARN_SEP).append('\n');
+
+            boolean anyFlagAvailable = warnLambda || (warnHidden && jdkMajor >= 21);
+
+            if (anyFlagAvailable)
+            {
+                msg.append("  Re-run with the appropriate JVM flag(s), then add the dump\n");
+                msg.append("  directory to Class locations in JITWatch configuration.\n");
+            }
+
+            if (warnLambda)
+            {
+                msg.append('\n');
+                if (jdkMajor >= 21)
+                {
+                    msg.append("  Lambda proxy classes (JDK ").append(jdkMajor).append(", hidden-class backed):\n");
+                    msg.append("    -Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles\n");
+                    msg.append("    Add DUMP_LAMBDA_PROXY_CLASS_FILES/ to Class locations.\n");
+                }
+                else if (jdkMajor >= 15)
+                {
+                    msg.append("  Lambda proxy classes (JDK ").append(jdkMajor).append(", hidden-class backed):\n");
+                    msg.append("    -Djdk.internal.lambda.dumpProxyClasses=/your/dump/dir\n");
+                    msg.append("    Add that directory to Class locations.\n");
+                }
+                else
+                {
+                    msg.append("  Lambda proxy classes (JDK ").append(jdkMajor).append("):\n");
+                    msg.append("    -Djdk.internal.lambda.dumpProxyClasses=/your/dump/dir\n");
+                    msg.append("    Add that directory to Class locations.\n");
+                }
+            }
+
+            if (warnHidden)
+            {
+                if (warnLambda) msg.append('\n');
+                if (jdkMajor >= 21)
+                {
+                    msg.append("  Lookup.defineHiddenClass classes (JDK ").append(jdkMajor).append("):\n");
+                    msg.append("    -Djdk.invoke.MethodHandle.dumpClassFiles\n");
+                    msg.append("    Add DUMP_CLASS_FILES/ to Class locations.\n");
+                }
+                else if (jdkMajor >= 15)
+                {
+                    msg.append("  Lookup.defineHiddenClass classes (JDK ").append(jdkMajor).append("):\n");
+                    msg.append("    No standard JVM flag is available on this JDK version.\n");
+                    msg.append("    Capture requires a native JVMTI agent or bytecode\n");
+                    msg.append("    instrumentation on Lookup::defineHiddenClass.\n");
+                }
+                else
+                {
+                    // JDK 11-14: Unsafe.defineAnonymousClass writes /0x<addr> FQNs into
+                    // compilation log XML, so detection works.
+                    // JDK 8-10: bare class names in XML — detection is not supported.
+                    msg.append("  Unsafe.defineAnonymousClass classes (JDK ").append(jdkMajor).append("):\n");
+                    msg.append("    No standard JVM flag is available on this JDK version.\n");
+                    msg.append("    Capture requires a native JVMTI agent or bytecode\n");
+                    msg.append("    instrumentation on Unsafe::defineAnonymousClass.\n");
+                }
+            }
+
+            msg.append(WARN_SEP);
+
+            hiddenClassWarningMessage = msg.toString();
+            logError("Hidden/dynamic class files could not be located; see parse log for details.");
+        }
+    }
+
+    private void loadHiddenClassToModel(String fqClassName)
+    {
+        // fqClassName is e.g. "com.foo.Bar/0x61044ae8"
+        int slashIdx = fqClassName.indexOf('/');
+        String baseFQN = fqClassName.substring(0, slashIdx);           // com.foo.Bar
+        String address = fqClassName.substring(slashIdx + 1);          // 0x61044ae8
+        String baseRelativePath = baseFQN.replace('.', '/');
+
+        List<String> locations = new ArrayList<>();
+        locations.addAll(config.getConfiguredClassLocations());
+        locations.addAll(getParsedClasspath().getClassLocations());
+
+        String[] candidates = {
+            baseRelativePath + "." + address + ".class",  // new flags (JDK 21+)
+            baseRelativePath + ".class"                   // old flags (any JDK)
+        };
+
+        for (String root : locations)
+        {
+            for (String candidate : candidates)
+            {
+                File classFile = new File(root, candidate);
+
+                if (classFile.exists())
+                {
+                    if (fqClassName.contains("$$Lambda")) 
+                    {
+                    	lambdaProxyDumpPresent = true;
+                    }
+                    else if (!baseFQN.startsWith("java.lang.invoke.")) 
+                    {
+                    	hiddenClassDumpPresent = true;
+                    }
+
+                    if (tryLoadHiddenClassFile(classFile, fqClassName)) 
+                    {
+                    	return;
+                    }
+                }
+            }
+        }
+
+        if (DEBUG_LOGGING)
+        {
+            logger.debug("Could not find class file for hidden class {}", fqClassName);
+        }
+
+        if (fqClassName.contains("$$Lambda"))
+        {
+            sawUnresolvableLambdaClass = true;
+        }
+        else
+        {
+            sawUnresolvableDefineHiddenClass = true;
+        }
+    }
+
+    private boolean tryLoadHiddenClassFile(File classFile, String fqClassName)
+    {
+        try (FileInputStream fis = new FileInputStream(classFile))
+        {
+            byte[] bytes = new byte[(int) classFile.length()];
+            int read = 0;
+            while (read < bytes.length)
+            {
+                int n = fis.read(bytes, read, bytes.length - read);
+                if (n < 0) 
+                {
+                	break;
+                }
+                read += n;
+            }
+            Class<?> clazz = new ByteArrayClassLoader(ClassUtil.getDisposableClassLoader()).define(bytes);
+            model.buildAndGetMetaClass(clazz, fqClassName);
+            return true;
+        }
+        catch (SecurityException se) // NB: ClassAct can likely fully recover from this
+        {
+            if (DEBUG_LOGGING)
+            {
+                logger.debug("Skipping hidden class in protected package: {}", fqClassName);
+            }
+            return true;
+        }
+        catch (IOException e)
+        {
+            logger.error("Could not read hidden class file {}", classFile, e);
+            return false;
         }
     }
 }
