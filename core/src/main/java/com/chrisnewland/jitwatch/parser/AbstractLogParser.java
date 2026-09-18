@@ -264,7 +264,12 @@ public abstract class AbstractLogParser implements ILogParser
 						logger.debug("Exception was {}", ex.getMessage());
 					}
 
-					logError("Could not parse line " + processLineNumber + " : " + logSignature + " : " + ex.getMessage());
+					int sp = logSignature.indexOf(' ');
+					String candidateClass = sp >= 0 ? logSignature.substring(0, sp) : logSignature;
+					if (!ParseUtil.possibleLambdaMethod(candidateClass) && !ParseUtil.isHiddenClassFQN(candidateClass))
+					{
+						logError("Could not parse line " + processLineNumber + " : " + logSignature + " : " + ex.getMessage());
+					}
 				}
 			}
 			else

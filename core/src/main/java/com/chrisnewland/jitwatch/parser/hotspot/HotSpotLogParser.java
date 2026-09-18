@@ -39,7 +39,6 @@ import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_VM_ARGUMENTS;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_VM_VERSION;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_WRITER;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.TAG_XML;
-import static com.chrisnewland.jitwatch.core.JITWatchConstants.DEBUG_LOGGING;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -599,6 +598,22 @@ public class HotSpotLogParser extends AbstractLogParser
                 sawUnresolvableLambdaClass = true;
             }
         }
+        else if (ParseUtil.isHiddenClassFQN(candidateFQN))
+        {
+            int slash = candidateFQN.indexOf('/');
+            String baseFQN = slash >= 0 ? candidateFQN.substring(0, slash) : candidateFQN;
+            if (!isJvmInternalHiddenClass(baseFQN))
+            {
+                // User-defined hidden class: log the unresolvable member so it surfaces in the error log.
+                super.onMemberUnresolvable(logSignature, ex);
+            }
+            // JVM-internal hidden classes (LambdaForm$MH, StringConcat, etc.) are silently skipped;
+            // the warning is handled via sawUnresolvableDefineHiddenClass.
+        }
+        else if (isJvmInternalHiddenClass(candidateFQN))
+        {
+            // JVM-internal class without address suffix (e.g. pre-15 invoke classes) — silently skip.
+        }
         else
         {
             super.onMemberUnresolvable(logSignature, ex);
@@ -633,6 +648,8 @@ public class HotSpotLogParser extends AbstractLogParser
                 {
                     continue;
                 }
+                int fqnSlash = fqn.indexOf('/');
+                String fqnBase = fqnSlash >= 0 ? fqn.substring(0, fqnSlash) : fqn;
                 if (fqn.contains("$$Lambda"))
                 {
                     if (!lambdaProxyDumpPresent)
@@ -640,7 +657,7 @@ public class HotSpotLogParser extends AbstractLogParser
                         sawUnresolvableLambdaClass = true;
                     }
                 }
-                else
+                else if (!isJvmInternalHiddenClass(fqnBase))
                 {
                     if (!hiddenClassDumpPresent)
                     {
@@ -713,7 +730,7 @@ public class HotSpotLogParser extends AbstractLogParser
                 {
                     // JDK 11-14: Unsafe.defineAnonymousClass writes /0x<addr> FQNs into
                     // compilation log XML, so detection works.
-                    // JDK 8-10: bare class names in XML — detection is not supported.
+                    // JDK 8-10: bare class names in XML; never dumped so detection is not supported.
                     msg.append("  Unsafe.defineAnonymousClass classes (JDK ").append(jdkMajor).append("):\n");
                     msg.append("    No standard JVM flag is available on this JDK version.\n");
                     msg.append("    Capture requires a native JVMTI agent or bytecode\n");
@@ -726,6 +743,16 @@ public class HotSpotLogParser extends AbstractLogParser
             hiddenClassWarningMessage = msg.toString();
             logError("Hidden/dynamic class files could not be located; see parse log for details.");
         }
+    }
+
+    // These don't generally play well with arbitrary ClassLoaders
+    // attempting to load them (assuming a dumped class is even
+    // available outright).  This is ClassAct territory.
+    private static boolean isJvmInternalHiddenClass(String baseFQN)
+    {
+        return baseFQN.startsWith("java.") || baseFQN.startsWith("javax.")
+            || baseFQN.startsWith("jdk.")   || baseFQN.startsWith("sun.")
+            || baseFQN.startsWith("com.sun.");
     }
 
     private void loadHiddenClassToModel(String fqClassName)
@@ -757,7 +784,7 @@ public class HotSpotLogParser extends AbstractLogParser
                     {
                     	lambdaProxyDumpPresent = true;
                     }
-                    else if (!baseFQN.startsWith("java.lang.invoke.")) 
+                    else if (!isJvmInternalHiddenClass(baseFQN))
                     {
                     	hiddenClassDumpPresent = true;
                     }
@@ -777,11 +804,17 @@ public class HotSpotLogParser extends AbstractLogParser
 
         if (fqClassName.contains("$$Lambda"))
         {
-            sawUnresolvableLambdaClass = true;
+            if (!lambdaProxyDumpPresent)
+            {
+                sawUnresolvableLambdaClass = true;
+            }
         }
-        else
+        else if (!isJvmInternalHiddenClass(baseFQN))
         {
-            sawUnresolvableDefineHiddenClass = true;
+            if (!hiddenClassDumpPresent)
+            {
+                sawUnresolvableDefineHiddenClass = true;
+            }
         }
     }
 
