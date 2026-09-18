@@ -373,6 +373,69 @@ public class JITDataModel implements IReadOnlyJITDataModel
 
 		return resultMetaClass;
 	}
+	
+	@Override public MetaClass buildAndGetMetaClass(Class<?> clazz, String overrideFQN)
+	{
+		// Same as buildAndGetMetaClass(Class<?>) but keys the MetaClass by
+		// overrideFQN rather than clazz.getName(). Used for hidden/anonymous
+		// classes where the log-entry FQN includes the /0xADDR suffix.
+		int lastDotIndex = overrideFQN.lastIndexOf(C_DOT);
+
+		String packageName;
+		String className;
+
+		if (lastDotIndex != -1)
+		{
+			packageName = overrideFQN.substring(0, lastDotIndex);
+			className = overrideFQN.substring(lastDotIndex + 1);
+		}
+		else
+		{
+			packageName = S_EMPTY;
+			className = overrideFQN;
+		}
+
+		MetaPackage metaPackage = packageManager.getMetaPackage(packageName);
+
+		if (metaPackage == null)
+		{
+			metaPackage = packageManager.buildPackage(packageName);
+		}
+
+		MetaClass resultMetaClass = new MetaClass(metaPackage, className);
+
+		packageManager.addMetaClass(resultMetaClass);
+		metaPackage.addClass(resultMetaClass);
+		stats.incCountClass();
+
+		if (clazz.isInterface())
+		{
+			resultMetaClass.setInterface(true);
+		}
+
+		try
+		{
+			for (Method m : clazz.getDeclaredMethods())
+			{
+				MetaMethod metaMethod = new MetaMethod(m, resultMetaClass);
+				resultMetaClass.addMember(metaMethod);
+				stats.incCountMethod();
+			}
+
+			for (Constructor<?> c : clazz.getDeclaredConstructors())
+			{
+				MetaConstructor metaConstructor = new MetaConstructor(c, resultMetaClass);
+				resultMetaClass.addMember(metaConstructor);
+				stats.incCountConstructor();
+			}
+		}
+		catch (Throwable t)
+		{
+			logger.error("Something unexpected happened building meta class {}", overrideFQN, t);
+		}
+
+		return resultMetaClass;
+	}
 
 	public void addCodeCacheEvent(CodeCacheEvent event)
 	{

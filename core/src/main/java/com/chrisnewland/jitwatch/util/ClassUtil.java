@@ -52,12 +52,28 @@ public final class ClassUtil
 			logger.debug("loadClassWithoutInitialising '{}'", fqClassName);
 		}
 
-		return Class.forName(fqClassName, false, disposableClassLoader);
+		try
+		{
+			return Class.forName(fqClassName, false, disposableClassLoader);
+		}
+		catch (SecurityException se)
+		{
+			// URLClassLoader (likely) found a class file for a java.* name and 
+			// tried to defineClass, which the JVM always rejects for java.* 
+			// packages.  Retain functioning work flow by throwing so downstream
+			// can decide how to handle.
+			throw new ClassNotFoundException(fqClassName, se);
+		}
 	}
 
 	public static Class<?> loadClassWithoutInitialising(String fqClassName, ClassLoader classLoader) throws ClassNotFoundException
 	{
 		return Class.forName(fqClassName, false, classLoader);
+	}
+	
+	public static ClassLoader getDisposableClassLoader()
+	{
+		return disposableClassLoader;
 	}
 
 	public static List<String> getCurrentClasspathElements()

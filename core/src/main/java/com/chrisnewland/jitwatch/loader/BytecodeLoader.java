@@ -38,9 +38,11 @@ import static com.chrisnewland.jitwatch.core.JITWatchConstants.S_SEMICOLON;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.S_SLASH;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.S_SPACE;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +66,7 @@ import com.chrisnewland.jitwatch.model.bytecode.Opcode;
 import com.chrisnewland.jitwatch.model.bytecode.SourceMapper;
 import com.chrisnewland.jitwatch.process.javap.JavapProcess;
 import com.chrisnewland.jitwatch.process.javap.ReflectionJavap;
+import com.chrisnewland.jitwatch.util.ParseUtil;
 import com.chrisnewland.jitwatch.util.StringUtil;
 import com.chrisnewland.freelogj.Logger;
 import com.chrisnewland.freelogj.LoggerFactory;
@@ -122,6 +125,39 @@ public final class BytecodeLoader
 
 			logger.debug("Class locations: {}", StringUtil.listToString(classLocations));
 		}
+		
+		// normalized potentially hidden class name
+		String javapTarget = fqClassName;
+		List<String> javapLocations = classLocations;
+
+		if (ParseUtil.isHiddenClassFQN(fqClassName))
+		{
+			int slashIdx = fqClassName.indexOf('/');
+			String baseFQN = fqClassName.substring(0, slashIdx);
+			String address = fqClassName.substring(slashIdx + 1);
+			String baseRelativePath = baseFQN.replace('.', '/');
+
+			String[] candidates = {
+					baseRelativePath + "." + address + ".class",
+					baseRelativePath + ".class"
+			};
+
+			outer:
+				for (String root : classLocations)
+				{
+					for (String candidate : candidates)
+					{
+						File classFile = new File(root, candidate);
+
+						if (classFile.exists())
+						{
+							javapTarget = classFile.getAbsolutePath();
+							javapLocations = Collections.emptyList();
+							break outer;
+						}
+					}
+				}
+		}
 
 		ClassBC classBytecode = null;
 
@@ -133,18 +169,18 @@ public final class BytecodeLoader
 			{
 				try
 				{
-					byteCodeString = ReflectionJavap.getBytecode(classLocations, fqClassName);
+					byteCodeString = ReflectionJavap.getBytecode(javapLocations, javapTarget);
 				}
 				catch (Exception e)
 				{
 					logger.info("Could not fetch bytecode via reflection, trying Process");
 
-					byteCodeString = getBytecodeStringViaProcess(classLocations, fqClassName, javapPath);
+					byteCodeString = getBytecodeStringViaProcess(javapLocations, javapTarget, javapPath);
 				}
 			}
 			else
 			{
-				byteCodeString = getBytecodeStringViaProcess(classLocations, fqClassName, javapPath);
+				byteCodeString = getBytecodeStringViaProcess(javapLocations, javapTarget, javapPath);
 			}
 
 			classBytecode = parseByteCodeFromString(fqClassName, byteCodeString, cacheBytecode);
@@ -400,6 +436,8 @@ public final class BytecodeLoader
 			pos++;
 		}
 
+		sectionFinished(fqClassName, section, msp, builder, memberBytecode, classBytecode);
+		
 		return classBytecode;
 	}
 

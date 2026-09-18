@@ -12,7 +12,9 @@ import static com.chrisnewland.jitwatch.core.JITWatchConstants.VM_LANGUAGE_JAVA;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.VM_LANGUAGE_JAVASCRIPT;
 import static com.chrisnewland.jitwatch.core.JITWatchConstants.VM_LANGUAGE_SCALA;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -55,8 +57,17 @@ public class Sandbox
 	public static final Path PATH_STD_OUT;
 
 	private static final String SANDBOX_LOGFILE = "sandbox.log";
+	
+	private static final String LAMBDA_PROXY_DUMP_DIRNAME = "lambda-proxy-dump";
+
+	private static final String JDK21_LAMBDA_DUMP_DIRNAME = "DUMP_LAMBDA_PROXY_CLASS_FILES";
+	private static final String JDK21_HIDDEN_DUMP_DIRNAME = "DUMP_CLASS_FILES";
 
 	private File sandboxLogFile = new File(SANDBOX_DIR.toFile(), SANDBOX_LOGFILE);
+	
+	// Set during executeClass(); read in runJITWatch() to register dump dirs.
+	private Path effectiveDumpWorkingDir = null;
+	private int lastJdkMajor = 0;
 
 	private ILogParser logParser;
 
@@ -198,7 +209,7 @@ public class Sandbox
 
 			long start = System.currentTimeMillis();
 
-			boolean executionSuccess = executeClass(fqClassNameToRun, runtime, logParser.getConfig().isSandboxIntelMode());
+			boolean executionSuccess = executeClass(fqClassNameToRun, runtime, logParser.getConfig().isSandboxIntelMode(), languagePath);
 
 			long stop = System.currentTimeMillis();
 
@@ -248,7 +259,7 @@ public class Sandbox
 		return classpath;
 	}
 
-	private boolean executeClass(String fqClassName, IRuntime runtime, boolean intelMode) throws Exception
+	private boolean executeClass(String fqClassName, IRuntime runtime, boolean intelMode, String jdkHome) throws Exception
 	{
 		List<String> classpath = buildUniqueClasspath(logParser.getConfig());
 
@@ -363,8 +374,97 @@ public class Sandbox
 		{
 			workingDirPath = Paths.get(logParser.getConfig().getSandboxWorkingDir());
 		}
+		
+		if (logParser.getConfig().isCaptureDynamicClasses())
+		{
+			lastJdkMajor = detectJdkMajorVersion(jdkHome);
+
+			if (workingDirPath == null)
+			{
+				workingDirPath = SANDBOX_DIR;
+			}
+
+			effectiveDumpWorkingDir = workingDirPath;
+
+			if (lastJdkMajor >= 21)
+			{
+				options.add("-Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles");
+				options.add("-Djdk.invoke.MethodHandle.dumpClassFiles");
+			}
+			else
+			{
+				File lambdaDumpDir = new File(SANDBOX_DIR.toFile(), LAMBDA_PROXY_DUMP_DIRNAME);
+				lambdaDumpDir.mkdirs();
+				options.add("-Djdk.internal.lambda.dumpProxyClasses=" + lambdaDumpDir.getAbsolutePath());
+				// -------------------------------------------------------------------------------------
+				// NB: once ClassAct gets integrated, the classes dumped by way of this flag  are from 
+				//     `java.lang.invoke` so any attempt at traditional ClassLoader loading throws 
+				//     SecurityException.  ClassAct employment should(?) be able to glean their contents 
+				//     for MetaClass creation and respective user interface participation.
+				options.add("-Djava.lang.invoke.MethodHandle.DUMP_CLASS_FILES=true");
+			}
+
+		}
+		else
+		{
+			effectiveDumpWorkingDir = null;
+			lastJdkMajor = 0;
+		}
 
 		return runtime.execute(workingDirPath, fqClassName, classpath, options, environment, logListener);
+	}
+	
+	private int detectJdkMajorVersion(String jdkHome)
+	{
+		File releaseFile = new File(jdkHome, "release");
+
+		if (releaseFile.exists())
+		{
+			try (BufferedReader reader = new BufferedReader(new FileReader(releaseFile)))
+			{
+				String line;
+
+				while ((line = reader.readLine()) != null)
+				{
+					if (line.startsWith("JAVA_VERSION="))
+					{
+						String version = line.substring("JAVA_VERSION=".length()).replace("\"", "").trim();
+						String[] parts = version.split("\\.");
+						int first = Integer.parseInt(parts[0]);
+
+						if (first == 1 && parts.length > 1)
+						{
+							return Integer.parseInt(parts[1]);
+						}
+
+						return first;
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				logger.warn("Could not read JDK release file at {}: {}", jdkHome, e.getMessage());
+			}
+		}
+
+		String specVersion = System.getProperty("java.specification.version", "1.8");
+
+		if (specVersion.startsWith("1."))
+		{
+			try 
+			{ 
+				return Integer.parseInt(specVersion.substring(2)); 
+			} catch (NumberFormatException ignored) {}
+		}
+		else
+		{
+			try 
+			{ 
+				return Integer.parseInt(specVersion); 
+			} catch (NumberFormatException ignored) {}
+		}
+
+		return 8;
 	}
 
 	private void runJITWatch() throws IOException
@@ -401,6 +501,41 @@ public class Sandbox
 			{
 				configChanged = true;
 				sourceLocations.add(jdkSourceZipString);
+			}
+		}
+		
+		if (config.isCaptureDynamicClasses() && effectiveDumpWorkingDir != null)
+		{
+			File workingDirDumpFile = effectiveDumpWorkingDir.toFile();
+			if (lastJdkMajor >= 21)
+			{
+				String lambdaDump = new File(workingDirDumpFile, JDK21_LAMBDA_DUMP_DIRNAME).toString();
+				String hiddenDump = new File(workingDirDumpFile, JDK21_HIDDEN_DUMP_DIRNAME).toString();
+
+				if (!classLocations.contains(lambdaDump)) 
+				{ 
+					classLocations.add(lambdaDump); 
+					configChanged = true; 
+				}
+				if (!classLocations.contains(hiddenDump)) 
+				{ 
+					classLocations.add(hiddenDump); 
+					configChanged = true; 
+				}
+			}
+			else
+			{
+				String lambdaDump = new File(SANDBOX_DIR.toFile(), LAMBDA_PROXY_DUMP_DIRNAME).toString();
+				String hiddenDump = new File(workingDirDumpFile, JDK21_HIDDEN_DUMP_DIRNAME).toString();
+
+				if (!classLocations.contains(lambdaDump)) 
+				{ 
+					classLocations.add(lambdaDump); configChanged = true; 
+				}
+				if (!classLocations.contains(hiddenDump)) 
+				{ 
+					classLocations.add(hiddenDump); configChanged = true; 
+				}
 			}
 		}
 
