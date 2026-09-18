@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>com.chrisnewland</groupId>
 		<artifactId>jitwatch-parent</artifactId>
-		<version>1.6</version>
+		<version>1.7</version>
 	</parent>
 
 	<artifactId>jitwatch-ui</artifactId>
@@ -61,7 +61,7 @@
 					<plugin>
 						<groupId>org.apache.maven.plugins</groupId>
 						<artifactId>maven-shade-plugin</artifactId>
-						<version>3.5.0</version>
+						<version>3.6.2</version>
 						<executions>
 							<execution>
 								<phase>package</phase>
